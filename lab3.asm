@@ -40,6 +40,7 @@ INIT:							; The initialization routine
 		out  SPL, mpr           ; SPL now holds the low byte
 		; Initialize LCD Display
 		rcall LCDInit
+		rcall LCDBacklightOn
 
 		rcall LCDClr                  ; writes $20 (space) to $0100-$011F, could be garbage there
 
@@ -83,7 +84,7 @@ check_PD5:
 check_PD7:
 		in   mpr, PIND          ; read all of port D
 		andi mpr, (1<<PD7)      ; keep only bit 7; everything else becomes 0
-		brne scroll        ; if PD7 is 1 (not pressed), skip to scroll_check
+		brne scroll_check        ; if PD7 is 1 (not pressed), skip to scroll_check
 		rcall PD7_pressed        ; result is 0 only if PD7 was 0
 scroll_check:
 		;r23 will be the flag to see if we are supposed to scroll or not, if it is 1 we are scrolling, if it is 0 we are not
