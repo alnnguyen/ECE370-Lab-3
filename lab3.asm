@@ -41,29 +41,18 @@ INIT:							; The initialization routine
 		; Initialize LCD Display
 		rcall LCDInit
 
-		rcall LCDClr                    ; writes $20 (space) to $0100-$011F, could be garbage there
+		rcall LCDClr                  ; writes $20 (space) to $0100-$011F, could be garbage there
 
-		; Point Z at the first character of STRING1 in program memory.
-		; <<1 will convert the word address to a byte address
-		ldi  ZL, low(STRING1_BEG<<1)    ; low byte of the byte address
-		ldi  ZH, high(STRING1_BEG<<1)   ; high byte of the byte address
+		clr r23 ;initialize the flag to 0 so that we are not scrolling
 
-		; Point Y at the first position of line 1 in data memory.
-		ldi  YL, low($0100)          
-		ldi  YH, high($0100)      
-		
-		ldi  r17, (STRING1_END-STRING1_BEG)*2
-		rcall CopyString
+		; Initialize the I/O ports
+		ldi mpr, $00
+		out DDRD, mpr          ; set PORTD to input
 
-		; string 2 -> line 2
-		ldi  ZL, low(STRING2_BEG<<1)
-		ldi  ZH, high(STRING2_BEG<<1)
-		ldi  YL, low($0110)
-		ldi  YH, high($0110)
-		ldi  r17, (STRING2_END-STRING2_BEG)*2
-		rcall CopyString  
+		ldi  mpr, (1<<PD4)|(1<<PD5)|(1<<PD7) ; set PORTD pins 4,5,7 to pull-up, using << to make it into a bit pattern, then or'ing them together to make a single byte
+		out  PORTD, mpr
 
-
+		rcall RestoreStrings              ; initial copy of the strings into the buffers
 
 
 		; NOTE that there is no RET or RJMP from INIT,
@@ -80,24 +69,35 @@ MAIN:							; The Main program
 
 		; Display the strings on the LCD Display
 
-		MAIN:
-    loop forever:
-        if PD4 pressed:
-            LCDClr()                ; blank both lines
-        if PD5 pressed:
-            CopyStrings()           ; restore the original text in the buffers
-            LCDWrite()              ; send both lines to the display
-        if PD7 pressed:
-            repeat until PD7 released (or let it run continuously):
-                ScrollStep()        ; shift the text one position
-                LCDWrite()          ; show the new positions
-                Delay(0.25 s)       ; long enough to read
-        ; (PD6 is not used)
+		in   mpr, PIND          ; read all of port D
+		andi mpr, (1<<PD4)      ; keep only bit 4; everything else becomes 0
+		brne check_PD5          ; if PD4 is 1 (not pressed), skip to check_PD5
+		rcall PD4_pressed        ; result is 0 only if PD4 was 0 (pressed)
+		
+check_PD5:
+		in   mpr, PIND          ; read all of port D
+		andi mpr, (1<<PD5)      ; keep only bit 5; everything else becomes 0
+		brne check_PD7          ; if PD5 is 1 (not pressed), skip to check_PD7
+		rcall PD5_pressed        ; result is 0 only if PD5 was 0 (pressed)
+		
+check_PD7:
+		in   mpr, PIND          ; read all of port D
+		andi mpr, (1<<PD7)      ; keep only bit 7; everything else becomes 0
+		brne scroll        ; if PD7 is 1 (not pressed), skip to scroll_check
+		rcall PD7_pressed        ; result is 0 only if PD7 was 0
+scroll_check:
+		;r23 will be the flag to see if we are supposed to scroll or not, if it is 1 we are scrolling, if it is 0 we are not
+       tst r23
+	   breq main_loop ;if the flag is 0, we are not scrolling, so skip the scroll step
+	   rcall ScrollStep ;if the flag is 1, we are scrolling, so scroll
 
 
 
 
-		rjmp	MAIN			; jump back to main and create an infinite
+
+	
+	main_loop:
+				rjmp	MAIN	; jump back to main and create an infinite						
 								; while loop.  Generally, every main program is an
 								; infinite while loop, never let the main program
 								; just run off
@@ -139,6 +139,132 @@ copy_str_loop:
     brne copy_str_loop
     ret
 
+
+;-----------------------------------------------------------
+; Func: PD4_pressed
+; Desc: Checks if PD4 is pressed and clears the LCD if it is.
+; In:   none
+; Out:  none
+; Uses: mpr
+;-----------------------------------------------------------
+PD4_pressed:
+		ldi r23 , 0 ;set the flag to 0 so that we are not scrolling
+		rcall LCDClr    
+		ret						; End a function with RET
+
+
+;-----------------------------------------------------------
+; Func: RestoreStrings
+; Desc: Restores the original strings in the data memory buffers.
+; In:   none
+; Out:  none
+; Uses: mpr, Z, Y, r17 (r17 is changed)
+;-----------------------------------------------------------
+RestoreStrings:
+	
+	 rcall LCDClr            ; blank both lines first, so no leftover characters
+	; Point Z at the first character of STRING1 in program memory.
+		; <<1 will convert the word address to a byte address
+		ldi  ZL, low(STRING1_BEG<<1)    ; low byte of the byte address
+		ldi  ZH, high(STRING1_BEG<<1)   ; high byte of the byte address
+
+		; Point Y at the first position of line 1 in data memory.
+		ldi  YL, low($0100)          
+		ldi  YH, high($0100)      
+		
+		ldi  r17, (STRING1_END-STRING1_BEG)*2 ; doubling length because of the word address to byte address conversion
+		rcall CopyString
+
+		; string 2 -> line 2
+		ldi  ZL, low(STRING2_BEG<<1)
+		ldi  ZH, high(STRING2_BEG<<1)
+		ldi  YL, low($0110)
+		ldi  YH, high($0110)
+		ldi  r17, (STRING2_END-STRING2_BEG)*2
+		rcall CopyString  
+
+
+		ret						; End a function with RET
+
+;-----------------------------------------------------------
+; Func: PD5_pressed
+; Desc: Displays the original strings on the LCD when PD5 is pressed.
+; In:   none
+; Out:  none
+; Uses: mpr 
+;-----------------------------------------------------------
+PD5_pressed:
+		ldi r23 , 0 ;set the flag to 0 so that we are not scrolling
+		rcall RestoreStrings ;restore the original text in the buffers that could have been scrolled
+		rcall LCDWrite ;uses the buffers already full of the original strings to write to the LCD
+		ret						; End a function with RET
+
+
+;-----------------------------------------------------------
+; Func: PD7_pressed
+; Desc: Displays orginal strings on the LCD and scrolls them when PD7 is pressed.
+; In:   none
+; Out:  none
+; Uses: mpr
+;-----------------------------------------------------------
+PD7_pressed:
+	cpi  r23, 1             ; is the scroll flag already high
+    breq PD7_Done           ; if yes, skip the rest of this function
+
+    rcall RestoreStrings      ; no
+    rcall LCDWrite          
+    ldi  r23, 1             ; set the flag high
+	rcall Delay_250ms          ; wait a bit before scrolling
+
+PD7_Done:
+    ret                     ; both paths end here
+
+
+;-----------------------------------------------------------
+; Func: ScrollStep
+; Desc: Scrolls the text in the data memory buffers by one position to the right.
+; In:   none
+; Out:  none
+; Uses: mpr, Z, Y
+;-----------------------------------------------------------
+ScrollStep:
+        ldi  YH, high($011F)    ; Y starts at the last byte
+        ldi  YL, low($011F)
+        ld   r18, Y             ; save the last byte, it wraps to $0100
+
+        ldi  r17, 31            ; move 31 bytes
+shift_loop:
+        ld   mpr, -Y            ; step down, read the byte there
+        std  Y+1, mpr           ; write it one position higher
+        dec  r17
+        brne shift_loop
+
+        st   Y, r18             ; Y is now $0100; put the wrapped byte there
+        rcall LCDWrite
+        rcall Delay_250ms
+        ret
+
+;-----------------------------------------------------------
+; Func: Delay_250ms
+; Desc: Busy-waits about 0.25 s at 16 MHz (4,000,000 cycles).
+; In:   none
+; Out:  none
+; Uses: r18, r19, r24 (all changed)
+;-----------------------------------------------------------
+Delay_250ms:
+    ldi  r18, 26            ; outer loop count
+D_outer:
+    ldi  r19, 200           ; middle loop count
+D_middle:
+    ldi  r24, 255           ; inner loop count
+D_inner:
+    dec  r24                ; 1 cycle
+    brne D_inner            ; 2 cycles when taken, 1 when not
+    dec  r19
+    brne D_middle
+    dec  r18
+    brne D_outer
+    ret
 ;***********************************************************
 ;*	Stored Program Data
 ;***********************************************************
@@ -157,3 +283,4 @@ STRING2_END:
 ;*	Additional Program Includes
 ;***********************************************************
 .include "LCDDriver.asm"		; Include the LCD Driver
+
