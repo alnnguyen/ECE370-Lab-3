@@ -1,8 +1,8 @@
 ;***********************************************************
 ;*	This is the skeleton file for Lab 3 of ECE 375
 ;*
-;*	 Author: Enter your name
-;*	   Date: Enter date
+;*	 Author: Sawyer Lamont Alan Nguyen
+;*	   Date: 2024-06-15
 ;*
 ;***********************************************************
 
@@ -275,10 +275,10 @@ D_inner:
 ; after the .DB directive; these can help to access the data
 ;-----------------------------------------------------------
 STRING1_BEG:
-.DB "Sawyer L"
+.DB "Alan Nguyen "
 STRING1_END:
 STRING2_BEG:
-.DB "HelloWorld"
+.DB "Sawyer Lamont "
 STRING2_END:
 ;***********************************************************
 ;*	Additional Program Includes
